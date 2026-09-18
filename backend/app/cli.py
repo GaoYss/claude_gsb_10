@@ -9,14 +9,16 @@ from datetime import date, timedelta
 
 import click
 from flask.cli import with_appcontext
+from sqlalchemy import or_
 
 from .extensions import db
-from .models import GreenSpace
+from .models import GreenSpace, MaintenanceRecord, MaintenanceTask
 from .services import (
     GreenSpaceService,
     MaintenanceRecordService,
     MaintenanceTaskService,
     PlantReplacementService,
+    WasteRecordService,
 )
 
 SPACE_SEEDS = [
@@ -164,6 +166,23 @@ WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
 WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
 
+# 产生绿化废弃物的作业类型：任务类型 → (废弃物类型, 计量单位) 候选
+WASTE_SEEDS = {
+    "prune": [("branch", "ton"), ("branch", "truck")],
+    "clean": [("leaf", "truck"), ("leaf", "cubic_meter")],
+    "weed": [("grass", "cubic_meter"), ("grass", "truck")],
+    "replant": [("dead_plant", "truck")],
+}
+WASTE_METHODS = {
+    "branch": ["recycle", "transport", "mulch"],
+    "leaf": ["transport", "mulch"],
+    "grass": ["mulch", "recycle"],
+    "dead_plant": ["transport"],
+}
+WASTE_VEHICLES = ["浙A3D567", "浙A8F219", "浙B6T830", "浙A1K956"]
+TRANSPORT_DESTINATIONS = ["城北绿化废弃物消纳场", "西湖区园林废弃物中转站"]
+RECYCLE_DESTINATIONS = ["绿源生物质燃料厂", "沃土有机肥加工厂"]
+
 
 def register_cli(app):
     app.cli.add_command(init_db_command)
@@ -207,7 +226,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "废弃物处置记录 {waste_record} 条".format(**summary)
     )
 
 
@@ -220,6 +240,7 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "waste_record": 0,
     }
 
     for index, space_seed in enumerate(SPACE_SEEDS):
@@ -322,6 +343,64 @@ def generate_demo_data(rng):
             "status": "cancelled",
         })
         counts["maintenance_task"] += 1
+
+    # 绿化废弃物台账：依附于修剪/保洁/除草/补植类养护记录与日常巡查记录单独生成，
+    # 放在最后以避免改变上面演示数据的随机序列；约三成留有余量，演示差额提示
+    waste_records = (
+        db.session.query(MaintenanceRecord)
+        .outerjoin(MaintenanceTask, MaintenanceRecord.task_id == MaintenanceTask.id)
+        .filter(
+            or_(
+                MaintenanceTask.task_type.in_(tuple(WASTE_SEEDS)),
+                MaintenanceRecord.task_id.is_(None),
+            )
+        )
+        .all()
+    )
+    for record in waste_records:
+        if rng.random() < 0.2:
+            continue
+        seeds = WASTE_SEEDS[record.task.task_type] if record.task else WASTE_SEEDS["clean"]
+        for _ in range(rng.randint(1, 2)):
+            waste_type, unit = rng.choice(seeds)
+            if unit == "ton":
+                quantity = round(rng.uniform(0.5, 4), 1)
+            elif unit == "cubic_meter":
+                quantity = rng.randint(2, 15)
+            else:
+                quantity = rng.randint(1, 6)
+            method = rng.choice(WASTE_METHODS[waste_type])
+            roll = rng.random()
+            if roll < 0.7:
+                disposed_quantity = quantity
+            elif roll < 0.85:
+                disposed_quantity = round(quantity * rng.uniform(0.3, 0.8), 2)
+            else:
+                disposed_quantity = 0
+            if method == "mulch":
+                vehicle, destination = None, "绿地内就地粉碎还田"
+            elif method == "transport":
+                vehicle, destination = rng.choice(WASTE_VEHICLES), rng.choice(TRANSPORT_DESTINATIONS)
+            else:
+                vehicle, destination = rng.choice(WASTE_VEHICLES), rng.choice(RECYCLE_DESTINATIONS)
+            WasteRecordService.create({
+                "green_space_id": record.green_space_id,
+                "waste_type": waste_type,
+                "generate_date": record.record_date,
+                "quantity": quantity,
+                "unit": unit,
+                "disposal_method": method,
+                "disposed_quantity": disposed_quantity,
+                "disposed_date": (
+                    record.record_date + timedelta(days=rng.randint(0, 4))
+                    if disposed_quantity > 0
+                    else None
+                ),
+                "transport_vehicle": vehicle,
+                "destination": destination,
+                "operator": rng.choice(WORKERS),
+            })
+            counts["waste_record"] += 1
 
     db.session.commit()
     return counts

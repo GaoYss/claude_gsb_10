@@ -130,6 +130,27 @@ MEASURE_UNIT = EnumGroup("measure_unit", [
     ("clump", "丛"),
 ])
 
+# ---------------------------------------------------------------- 绿化废弃物
+WASTE_TYPE = EnumGroup("waste_type", [
+    ("branch", "枝条枝干"),
+    ("leaf", "落叶枯枝"),
+    ("grass", "草屑杂草"),
+    ("dead_plant", "枯死植株"),
+    ("other", "其他废弃物"),
+])
+
+WASTE_DISPOSAL_METHOD = EnumGroup("waste_disposal_method", [
+    ("mulch", "粉碎还田"),
+    ("transport", "外运消纳"),
+    ("recycle", "资源利用"),
+])
+
+WASTE_UNIT = EnumGroup("waste_unit", [
+    ("ton", "吨"),
+    ("cubic_meter", "立方米"),
+    ("truck", "车"),
+])
+
 # 前端下拉与文档共用的一份字典清单
 ENUM_GROUPS = {
     "green_space_type": GREEN_SPACE_TYPE,
@@ -144,6 +165,9 @@ ENUM_GROUPS = {
     "replacement_reason": REPLACEMENT_REASON,
     "old_plant_status": OLD_PLANT_STATUS,
     "measure_unit": MEASURE_UNIT,
+    "waste_type": WASTE_TYPE,
+    "waste_disposal_method": WASTE_DISPOSAL_METHOD,
+    "waste_unit": WASTE_UNIT,
 }
 
 

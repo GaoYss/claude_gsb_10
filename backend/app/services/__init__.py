@@ -5,6 +5,7 @@ from .maintenance_record_service import MaintenanceRecordService
 from .maintenance_task_service import MaintenanceTaskService
 from .plant_replacement_service import PlantReplacementService
 from .statistics_service import StatisticsService
+from .waste_record_service import WasteRecordService
 
 __all__ = [
     "GreenSpaceService",
@@ -12,4 +13,5 @@ __all__ = [
     "MaintenanceRecordService",
     "PlantReplacementService",
     "StatisticsService",
+    "WasteRecordService",
 ]

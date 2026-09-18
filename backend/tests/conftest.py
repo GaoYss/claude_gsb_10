@@ -151,6 +151,29 @@ def make_replacement(make_space):
 
 
 @pytest.fixture()
+def make_waste(make_space):
+    from app.services import WasteRecordService
+
+    def _make(space=None, **overrides):
+        space = space or make_space()
+        payload = {
+            "green_space_id": space.id,
+            "waste_type": "branch",
+            "generate_date": date(2026, 3, 16),
+            "quantity": 2.5,
+            "unit": "ton",
+            "disposal_method": "recycle",
+            "disposed_quantity": 2.5,
+            "disposed_date": date(2026, 3, 18),
+            "transport_vehicle": "浙A3D567",
+            "destination": "绿源生物质燃料厂",
+            "operator": "王海涛",
+        }
+        payload.update(overrides)
+        return WasteRecordService.create(payload)
+
+    return _make
+@pytest.fixture()
 def seeded(app):
     """写入演示数据（固定随机种子，保证断言稳定）。"""
 
