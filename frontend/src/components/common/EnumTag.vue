@@ -21,6 +21,8 @@ const TAG_TYPES = {
   quality_result: { qualified: 'success', pending: 'warning', unqualified: 'danger' },
   maintenance_grade: { level1: 'success', level2: 'primary', level3: 'info' },
   replacement_reason: { dead: 'danger', disease: 'warning', aging: 'info', upgrade: 'primary' },
+  disposal_method: { mulch: 'success', offsite: 'warning', recycle: 'primary' },
+  waste_status: { pending: 'warning', disposed: 'success' },
 }
 
 const meta = useMetaStore()

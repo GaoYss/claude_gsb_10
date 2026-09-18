@@ -5,7 +5,7 @@ from sqlalchemy import and_, func, or_
 from ..constants import ENUM_GROUPS, GREEN_SPACE_STATUS
 from ..errors import ConflictError
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import GreenSpace, GreenWaste, MaintenanceRecord, MaintenanceTask, PlantReplacement
 from ..models.maintenance_task import OPEN_STATUSES
 from ..utils.dates import format_date, today
 from ..utils.numbers import to_float
@@ -215,6 +215,31 @@ class GreenSpaceService(BaseService):
             .limit(5)
             .all()
         )
+        waste_disposed = db.session.query(
+            func.coalesce(
+                func.sum(
+                    func.coalesce(GreenWaste.disposal_quantity, GreenWaste.quantity)
+                ),
+                0,
+            )
+        ).filter(
+            GreenWaste.green_space_id == space.id,
+            GreenWaste.disposal_method.isnot(None),
+            GreenWaste.disposal_date.isnot(None),
+        ).scalar()
+
+        waste_total = db.session.query(
+            func.count(GreenWaste.id),
+            func.coalesce(func.sum(GreenWaste.quantity), 0),
+        ).filter(GreenWaste.green_space_id == space.id).one()
+
+        recent_wastes = (
+            db.session.query(GreenWaste)
+            .filter(GreenWaste.green_space_id == space.id)
+            .order_by(GreenWaste.produce_date.desc(), GreenWaste.id.desc())
+            .limit(5)
+            .all()
+        )
 
         return {
             "green_space": space.to_dict(detail=True),
@@ -225,6 +250,12 @@ class GreenSpaceService(BaseService):
                 "replacement_count": replacement_stats[0] or 0,
                 "replacement_quantity": to_float(replacement_stats[1]) or 0,
                 "replacement_amount": to_float(replacement_stats[2]) or 0,
+                "waste_count": waste_total[0] or 0,
+                "waste_produced_quantity": to_float(waste_total[1]) or 0,
+                "waste_disposed_quantity": to_float(waste_disposed) or 0,
+                "waste_pending_quantity": (
+                    to_float((waste_total[1] or 0) - (waste_disposed or 0)) or 0
+                ),
                 "task_status": task_status,
                 "is_maintenance_overdue": (
                     record_stats[2] is None or (today() - record_stats[2]).days > 30
@@ -243,6 +274,7 @@ class GreenSpaceService(BaseService):
             "recent_tasks": [item.to_dict() for item in recent_tasks],
             "recent_records": [item.to_dict() for item in recent_records],
             "recent_replacements": [item.to_dict() for item in recent_replacements],
+            "recent_wastes": [item.to_dict() for item in recent_wastes],
         }
 
     # ------------------------------------------------------------ 写入
@@ -262,11 +294,16 @@ class GreenSpaceService(BaseService):
             .filter(PlantReplacement.green_space_id == space.id)
             .scalar()
             or 0,
+            "green_waste": db.session.query(func.count(GreenWaste.id))
+            .filter(GreenWaste.green_space_id == space.id)
+            .scalar()
+            or 0,
         }
         if sum(counts.values()) and not force:
             raise ConflictError(
                 "该绿地已存在养护任务 {maintenance_task} 条、养护记录 {maintenance_record} 条、"
-                "绿植更换记录 {plant_replacement} 条，删除将一并清除，请确认后重试".format(**counts),
+                "绿植更换记录 {plant_replacement} 条、废弃物处置记录 {green_waste} 条，"
+                "删除将一并清除，请确认后重试".format(**counts),
                 details=counts,
             )
         db.session.delete(space)

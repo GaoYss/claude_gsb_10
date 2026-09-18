@@ -14,6 +14,7 @@ from .extensions import db
 from .models import GreenSpace
 from .services import (
     GreenSpaceService,
+    GreenWasteService,
     MaintenanceRecordService,
     MaintenanceTaskService,
     PlantReplacementService,
@@ -164,6 +165,27 @@ WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
 WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
 
+# (类型, 产生环节, 典型产生量区间, 常用单位)
+WASTE_POOL = [
+    ("branch", "行道树整形修剪枝条", (0.8, 4.5), "ton"),
+    ("grass", "绿篱与草坪修剪草屑、除杂草", (0.5, 3.0), "ton"),
+    ("leaf", "秋季落叶集中清理", (6.0, 20.0), "cubic_meter"),
+    ("wood", "台风倒伏乔木与枯死树桩清理", (1.2, 5.0), "ton"),
+    ("dead_plant", "枯死灌木与时令花卉清理", (0.3, 1.5), "ton"),
+    ("mixed", "保洁清扫混合绿化垃圾", (0.5, 2.5), "ton"),
+]
+DISPOSAL_TARGETS = {
+    "offsite": [
+        ("杭州绿能环保发电厂", "计量入场后焚烧发电，联单已留存"),
+        ("余杭市容环卫消纳场", "密闭运输至指定消纳场填埋覆土"),
+    ],
+    "recycle": [
+        ("余杭区园林废弃物资源化利用中心", "粉碎发酵后加工为栽培基质与覆盖物"),
+        ("萧山园林废弃物循环利用基地", "枝条切片堆肥，资源化产品用于绿地回覆"),
+    ],
+}
+VEHICLE_PLATES = ["浙A·3K21挂", "浙A·8D65挂", "浙A·5T07挂", "浙A·2F93挂", "浙A·6L18挂"]
+
 
 def register_cli(app):
     app.cli.add_command(init_db_command)
@@ -207,7 +229,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "废弃物处置 {green_waste} 条".format(**summary)
     )
 
 
@@ -220,6 +243,7 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "green_waste": 0,
     }
 
     for index, space_seed in enumerate(SPACE_SEEDS):
@@ -307,6 +331,58 @@ def generate_demo_data(rng):
                 "quality_result": "qualified",
             })
             counts["maintenance_record"] += 1
+
+        # 废弃物处置台账：跨月份分布，部分已处置、部分暂存，并保留产生量与处置量的差异
+        for _ in range(rng.randint(1, 3)):
+            waste_type, source_detail, (low, high), unit = rng.choice(WASTE_POOL)
+            produce_date = today_ - timedelta(days=rng.randint(3, 150))
+            quantity = round(rng.uniform(low, high), 2)
+            payload = {
+                "green_space_id": space.id,
+                "waste_type": waste_type,
+                "quantity": quantity,
+                "unit": unit,
+                "produce_date": produce_date,
+                "source_detail": source_detail,
+                "operator": rng.choice(WORKERS),
+            }
+            roll = rng.random()
+            if roll < 0.55:
+                # 已全部处置（粉碎还田 / 外运消纳 / 资源利用）
+                method = rng.choice(["mulch", "offsite", "recycle"])
+                payload.update({
+                    "disposal_method": method,
+                    "disposal_date": produce_date + timedelta(days=rng.randint(0, 4)),
+                })
+                if method == "mulch":
+                    payload.update({
+                        "vehicle_no": None,
+                        "receiver": "就地处置",
+                        "disposal_note": "枝条粉碎后作为覆盖物就地还田覆盖树穴与色块",
+                    })
+                else:
+                    receiver, note = rng.choice(DISPOSAL_TARGETS[method])
+                    payload.update({
+                        "vehicle_no": rng.choice(VEHICLE_PLATES),
+                        "receiver": receiver,
+                        "disposal_note": note,
+                    })
+            elif roll < 0.75:
+                # 部分外运处置，剩余暂存（产生量与处置量对不上）
+                receiver, note = rng.choice(DISPOSAL_TARGETS["offsite"])
+                payload.update({
+                    "disposal_method": "offsite",
+                    "disposal_quantity": round(quantity * rng.uniform(0.4, 0.7), 2),
+                    "disposal_date": produce_date + timedelta(days=rng.randint(0, 3)),
+                    "vehicle_no": rng.choice(VEHICLE_PLATES),
+                    "receiver": receiver,
+                    "disposal_note": note + "；余量暂存于绿地临时堆放点，待下次清运",
+                })
+            else:
+                # 暂存待处置
+                payload["disposal_note"] = None
+            GreenWasteService.create(payload)
+            counts["green_waste"] += 1
 
     # 一条已取消任务，覆盖全部状态场景
     first_space = db.session.query(GreenSpace).order_by(GreenSpace.id.asc()).first()

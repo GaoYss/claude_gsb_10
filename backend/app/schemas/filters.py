@@ -110,3 +110,28 @@ def replacement_filters(args):
     filters["date_from"] = _date(args, "date_from")
     filters["date_to"] = _date(args, "date_to")
     return filters
+
+
+def waste_filters(args):
+    filters = {}
+    for key in ("green_space_id", "maintenance_record_id"):
+        value = _int(args, key)
+        if value:
+            filters[key] = value
+    for key, group_key in (
+        ("waste_type", "green_waste_type"),
+        ("disposal_method", "disposal_method"),
+        ("status", "waste_status"),
+    ):
+        value = _enum(args, key, group_key)
+        if value:
+            filters[key] = value
+    keyword = _text(args, "keyword")
+    if keyword:
+        filters["keyword"] = keyword
+    filters["date_from"] = _date(args, "date_from")
+    filters["date_to"] = _date(args, "date_to")
+    month = _text(args, "month")
+    if month and len(month) == 7 and month[4] == "-" and month[:4].isdigit() and month[5:].isdigit():
+        filters["month"] = month
+    return filters

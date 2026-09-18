@@ -9,14 +9,17 @@ from .filters import (
     record_filters,
     replacement_filters,
     task_filters,
+    waste_filters,
 )
 from .green_space import validate_green_space
+from .green_waste import validate_green_waste
 from .maintenance_record import validate_maintenance_record
 from .maintenance_task import validate_maintenance_task, validate_task_status
 from .plant_replacement import validate_plant_replacement
 
 __all__ = [
     "validate_green_space",
+    "validate_green_waste",
     "validate_maintenance_task",
     "validate_task_status",
     "validate_maintenance_record",
@@ -25,4 +28,5 @@ __all__ = [
     "task_filters",
     "record_filters",
     "replacement_filters",
+    "waste_filters",
 ]

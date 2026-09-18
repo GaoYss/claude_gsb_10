@@ -41,6 +41,9 @@
       <StatCard label="养护任务" :value="formatNumber(taskTotal)" unit="项"
                 :hint="`已完成 ${statistics.task_status.completed || 0} 项，进行中 ${(statistics.task_status.in_progress || 0) + (statistics.task_status.pending || 0)} 项`"
                 tone="info" icon="Tickets" />
+      <StatCard label="废弃物待处置" :value="formatNumber(statistics.waste_pending_quantity ?? 0)"
+                :hint="`产生 ${formatNumber(statistics.waste_produced_quantity ?? 0)}，已处置 ${formatNumber(statistics.waste_disposed_quantity ?? 0)}（${formatNumber(statistics.waste_count ?? 0)} 条）`"
+                :tone="(statistics.waste_pending_quantity ?? 0) > 0 ? 'warning' : 'default'" icon="Van" />
     </div>
 
     <div class="panel">
@@ -127,6 +130,44 @@
             </el-tag>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="近期废弃物处置" name="wastes">
+          <div class="tab-actions">
+            <el-button link type="primary" @click="goList('wastes')">查看全部废弃物</el-button>
+          </div>
+          <el-table :data="recentWastes" size="small" empty-text="暂无废弃物处置记录">
+            <el-table-column prop="waste_no" label="编号" width="160" />
+            <el-table-column prop="produce_date" label="产生日期" width="100" />
+            <el-table-column label="类型" width="110">
+              <template #default="{ row }">
+                <EnumTag group="green_waste_type" :value="row.waste_type" :label="row.waste_type_label" />
+              </template>
+            </el-table-column>
+            <el-table-column label="产生量" width="100">
+              <template #default="{ row }">{{ formatNumber(row.quantity) }} {{ row.unit_label }}</template>
+            </el-table-column>
+            <el-table-column label="处置方式" width="110">
+              <template #default="{ row }">
+                <EnumTag v-if="row.disposal_method" group="disposal_method"
+                         :value="row.disposal_method" :label="row.disposal_method_label" />
+                <EnumTag v-else group="waste_status" value="pending" label="暂存待处置" />
+              </template>
+            </el-table-column>
+            <el-table-column label="处置量" width="90" align="right">
+              <template #default="{ row }">
+                <span :class="{ 'pending-text': row.pending_quantity > 0 }">
+                  {{ row.disposal_quantity === null ? '未处置' : formatNumber(row.disposal_quantity) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="vehicle_no" label="运输车辆" width="115">
+              <template #default="{ row }">{{ row.vehicle_no || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="receiver" label="去向/接收单位" min-width="170" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.receiver || '-' }}</template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -153,10 +194,22 @@ const loading = ref(false)
 const activeTab = ref('tasks')
 
 const space = ref({})
-const statistics = ref({ task_status: {}, record_count: 0, total_work_hours: 0, replacement_count: 0, replacement_quantity: 0, replacement_amount: 0 })
+const statistics = ref({
+  task_status: {},
+  record_count: 0,
+  total_work_hours: 0,
+  replacement_count: 0,
+  replacement_quantity: 0,
+  replacement_amount: 0,
+  waste_count: 0,
+  waste_produced_quantity: 0,
+  waste_disposed_quantity: 0,
+  waste_pending_quantity: 0,
+})
 const recentTasks = ref([])
 const recentRecords = ref([])
 const recentReplacements = ref([])
+const recentWastes = ref([])
 const replacementSummary = ref([])
 
 const taskTotal = computed(() =>
@@ -172,6 +225,7 @@ async function load() {
     recentTasks.value = data.recent_tasks || []
     recentRecords.value = data.recent_records || []
     recentReplacements.value = data.recent_replacements || []
+    recentWastes.value = data.recent_wastes || []
     replacementSummary.value = data.replacement_summary || []
   } finally {
     loading.value = false
@@ -182,6 +236,7 @@ const LIST_ROUTES = {
   tasks: 'task-list',
   records: 'record-list',
   replacements: 'replacement-list',
+  wastes: 'green-waste-list',
 }
 
 function goList(name) {
@@ -208,5 +263,10 @@ onMounted(load)
 
 .summary-tag {
   margin-right: 4px;
+}
+
+.pending-text {
+  color: #e6a23c;
+  font-weight: 600;
 }
 </style>
